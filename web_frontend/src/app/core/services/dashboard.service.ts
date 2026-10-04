@@ -1,16 +1,13 @@
-import { Injectable } from '@angular/core';
-import { Observable, of } from 'rxjs';
+import { Injectable, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
 import { BranchSummary, DashboardMetric, RecentActivity } from '../models/shopchain.models';
-import { BRANCH_SUMMARY, DASHBOARD_METRICS, RECENT_ACTIVITY } from '../data/mock-data';
+import { environment } from '../../../environments/environment';
+
 @Injectable({ providedIn: 'root' })
 export class DashboardService {
-  getMetrics(): Observable<DashboardMetric[]> {
-    return of(DASHBOARD_METRICS);
-  }
-  getBranchSummary(): Observable<BranchSummary[]> {
-    return of(BRANCH_SUMMARY);
-  }
-  getRecentActivity(): Observable<RecentActivity[]> {
-    return of(RECENT_ACTIVITY);
-  }
+  private http = inject(HttpClient);
+  private url = `${environment.apiUrl}/dashboard`;
+  getMetrics() { return this.http.get<DashboardMetric[]>(`${this.url}/metrics`); }
+  getBranchSummary() { return this.http.get<BranchSummary[]>(`${this.url}/branches`); }
+  getRecentActivity() { return this.http.get<RecentActivity[]>(`${this.url}/activity`); }
 }

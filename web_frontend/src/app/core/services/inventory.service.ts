@@ -1,28 +1,18 @@
-import { Injectable } from '@angular/core';
-import { Observable, of } from 'rxjs';
-import { BranchStock, InventoryItem, StockMovement } from '../models/shopchain.models';
-import { INVENTORY, MOVEMENTS } from '../data/mock-data';
+import { Injectable, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { InventoryItem, StockMovement } from '../models/shopchain.models';
+import { InventoryRequest, MovementRequest } from '../models/requests.models';
+import { environment } from '../../../environments/environment';
+
 @Injectable({ providedIn: 'root' })
 export class InventoryService {
-  getInventory(): Observable<InventoryItem[]> {
-    return of(INVENTORY.map((i) => ({ ...i })));
+  private http = inject(HttpClient);
+  private url = environment.apiUrl;
+  getInventory() { return this.http.get<InventoryItem[]>(`${this.url}/inventory`); }
+  getMovements() { return this.http.get<StockMovement[]>(`${this.url}/stock-movements`); }
+  getStockByProduct(productId: number) {
+    return this.http.get<InventoryItem[]>(`${this.url}/inventory`, { params: { productId } });
   }
-
-  getMovements(): Observable<StockMovement[]> {
-    return of(MOVEMENTS.map((m) => ({ ...m })));
-  }
-
-  getStockByProduct(productId: number): Observable<BranchStock[]> {
-    return of(
-      INVENTORY.filter((i) => i.productId === productId).map((i) => ({
-        branch: i.branch,
-        stock: i.stock,
-      })),
-    );
-  }
-
-  addMovement(movement: StockMovement): Observable<StockMovement> {
-    MOVEMENTS.unshift(movement);
-    return of(movement);
-  }
+  register(body: InventoryRequest) { return this.http.post<InventoryItem>(`${this.url}/inventory`, body); }
+  addMovement(body: MovementRequest) { return this.http.post<StockMovement>(`${this.url}/stock-movements`, body); }
 }

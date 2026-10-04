@@ -2,7 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { CurrencyPipe } from '@angular/common';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { FormsModule } from '@angular/forms';
-import { Product } from '../../../core/models/shopchain.models';
+import { Product, Category } from '../../../core/models/shopchain.models';
 import { ProductService } from '../../../core/services/product.service';
 @Component({
   selector: 'app-products-admin',
@@ -26,14 +26,11 @@ import { ProductService } from '../../../core/services/product.service';
           ><label>Nombre<input formControlName="name" /></label
           ><label>Marca<input formControlName="brand" /></label
           ><label
-            >Categoría<select formControlName="category">
-              <option value="">Selecciona</option>
-              <option>Running</option>
-              <option>Training</option>
-              <option>Casual</option>
+            >Categoría<select formControlName="categoryId">
+              <option [ngValue]="0">Selecciona</option>
+              @for (c of categories(); track c.id) { <option [ngValue]="c.id">{{ c.name }}</option> }
             </select></label
           ><label>Precio<input type="number" min="0" formControlName="price" /></label
-          ><label>Stock inicial<input type="number" min="0" formControlName="stock" /></label
           ><label class="full"
             >Descripción<textarea rows="3" formControlName="description"></textarea>
           </label>
@@ -98,6 +95,7 @@ export class ProductsAdminComponent {
   private fb = inject(FormBuilder);
   private service = inject(ProductService);
   products = signal<Product[]>([]);
+  categories = signal<Category[]>([]);
   showForm = signal(false);
   editingId = signal<number | null>(null);
   query = '';
@@ -105,13 +103,13 @@ export class ProductsAdminComponent {
     sku: ['', Validators.required],
     name: ['', Validators.required],
     brand: ['', Validators.required],
-    category: ['', Validators.required],
+    categoryId: [0, Validators.min(1)],
     price: [0, [Validators.required, Validators.min(0.01)]],
     description: ['', Validators.required],
-    stock: [0, [Validators.required, Validators.min(0)]],
   });
   constructor() {
     this.load();
+    this.service.getCategories().subscribe((v) => this.categories.set(v));
   }
   load(): void {
     this.service.getProducts().subscribe((v) => this.products.set(v));
@@ -126,10 +124,9 @@ export class ProductsAdminComponent {
       sku: '',
       name: '',
       brand: '',
-      category: '',
+      categoryId: 0,
       price: 0,
       description: '',
-      stock: 0,
     });
     this.showForm.set(true);
   }
@@ -139,8 +136,7 @@ export class ProductsAdminComponent {
     this.showForm.set(true);
   }
   toggle(p: Product): void {
-    this.service.toggle(p.id);
-    this.load();
+    this.service.toggle(p).subscribe(() => this.load());
   }
   save(): void {
     this.form.markAllAsTouched();
@@ -148,16 +144,15 @@ export class ProductsAdminComponent {
     const v = this.form.getRawValue();
     this.service
       .save({
-        id: this.editingId() ?? 0,
         sku: v.sku,
         name: v.name,
         brand: v.brand,
-        category: v.category,
+        categoryId: v.categoryId,
         price: v.price,
         description: v.description,
-        image: this.products()[0]?.image ?? '',
-        active: true,
-      })
+        image: this.products().find((p) => p.id === this.editingId())?.image ?? '',
+        active: this.products().find((p) => p.id === this.editingId())?.active ?? true,
+      }, this.editingId() ?? undefined)
       .subscribe(() => {
         this.load();
         this.showForm.set(false);

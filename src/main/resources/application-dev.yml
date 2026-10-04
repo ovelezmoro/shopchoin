@@ -1,0 +1,8 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: update
+
+shopchain:
+  demo:
+    password: ${DEMO_ADMIN_PASSWORD:admin123}

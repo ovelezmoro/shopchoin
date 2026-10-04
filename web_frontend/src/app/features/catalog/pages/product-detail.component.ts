@@ -4,6 +4,8 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { combineLatest, map, switchMap } from 'rxjs';
 import { ProductService } from '../../../core/services/product.service';
 import { InventoryService } from '../../../core/services/inventory.service';
+import { AuthService } from '../../../core/services/auth.service';
+import { UserRole } from '../../../core/models/shopchain.models';
 @Component({
   selector: 'app-product-detail',
   imports: [AsyncPipe, CurrencyPipe, RouterLink],
@@ -37,8 +39,8 @@ import { InventoryService } from '../../../core/services/inventory.service';
                     <td>
                       <span
                         class="badge"
-                        [attr.data-status]="s.stock <= 4 ? 'Stock bajo' : 'Disponible'"
-                        >{{ s.stock <= 4 ? 'Stock bajo' : 'Disponible' }}</span
+                        [attr.data-status]="s.status"
+                        >{{ s.status }}</span
                       >
                     </td>
                   </tr>
@@ -46,13 +48,15 @@ import { InventoryService } from '../../../core/services/inventory.service';
               </tbody>
             </table>
           </div>
-          <a class="btn primary" routerLink="/orders/new">Registrar pedido</a>
+          @if (p.active && auth.hasRole(roles.Admin, roles.Store)) { <a class="btn primary" routerLink="/orders/new">Registrar pedido</a> }
         </article>
       </div>
     }
   }`,
 })
 export class ProductDetailComponent {
+  auth = inject(AuthService);
+  roles = UserRole;
   private route = inject(ActivatedRoute);
   private products = inject(ProductService);
   private inventory = inject(InventoryService);

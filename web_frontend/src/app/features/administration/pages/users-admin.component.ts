@@ -39,7 +39,7 @@ import { UserService } from '../../../core/services/user.service';
         </div>
         @if (form.touched && form.invalid) {
           <small class="error"
-            >Completa los campos. La contraseña requiere al menos 6 caracteres.</small
+            >Completa los campos. La contraseña requiere al menos 8 caracteres; al editar puedes dejarla vacía para conservarla.</small
           >
         }
         <div class="form-actions"><button class="btn primary">Guardar usuario</button></div>
@@ -89,7 +89,7 @@ export class UsersAdminComponent {
   form = this.fb.nonNullable.group({
     names: ['', Validators.required],
     email: ['', [Validators.required, Validators.email]],
-    password: ['', [Validators.required, Validators.minLength(6)]],
+    password: ['', [Validators.required, Validators.minLength(8)]],
     role: ['', Validators.required],
     active: [true, Validators.required],
   });
@@ -101,15 +101,17 @@ export class UsersAdminComponent {
   }
   open(): void {
     this.editingId.set(null);
+    this.form.controls.password.setValidators([Validators.required, Validators.minLength(8)]);
     this.form.reset({ names: '', email: '', password: '', role: '', active: true });
     this.showForm.set(true);
   }
   edit(u: User): void {
     this.editingId.set(u.id);
+    this.form.controls.password.setValidators([Validators.minLength(8)]);
     this.form.setValue({
       names: u.names,
       email: u.email,
-      password: 'secreto',
+      password: '',
       role: u.role,
       active: u.active,
     });
@@ -121,12 +123,12 @@ export class UsersAdminComponent {
     const v = this.form.getRawValue();
     this.service
       .save({
-        id: this.editingId() ?? 0,
+        ...(v.password ? { password: v.password } : {}),
         names: v.names,
         email: v.email,
         role: v.role as UserRole,
         active: v.active,
-      })
+      }, this.editingId() ?? undefined)
       .subscribe(() => {
         this.load();
         this.showForm.set(false);

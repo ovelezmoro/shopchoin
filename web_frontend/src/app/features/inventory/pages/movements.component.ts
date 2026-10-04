@@ -1,4 +1,7 @@
 import { Component, inject, signal } from '@angular/core';
+import { DatePipe } from '@angular/common';
+import { AuthService } from '../../../core/services/auth.service';
+import { UserRole } from '../../../core/models/shopchain.models';
 import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ProductService } from '../../../core/services/product.service';
 import { BranchService } from '../../../core/services/branch.service';
@@ -11,13 +14,13 @@ import {
 } from '../../../core/models/shopchain.models';
 @Component({
   selector: 'app-movements',
-  imports: [ReactiveFormsModule, FormsModule],
+  imports: [ReactiveFormsModule, FormsModule, DatePipe],
   template: `<div class="page-head mock-head">
       <div>
         <div class="section-title">Movimientos de stock</div>
         <div class="section-subtitle">Registro de entradas, salidas y reposiciones.</div>
       </div>
-      <button class="btn primary" (click)="showForm.set(!showForm())">+ Nuevo movimiento</button>
+      @if (auth.hasRole(roles.Admin, roles.Warehouse)) { <button class="btn primary" (click)="showForm.set(!showForm())">+ Nuevo movimiento</button> }
     </div>
     @if (showForm()) {
       <form class="card form-card" [formGroup]="form" (ngSubmit)="save()">
@@ -30,7 +33,7 @@ import {
             >Producto<select formControlName="product">
               <option value="">Selecciona</option>
               @for (p of products(); track p.id) {
-                <option [value]="p.name">{{ p.name }}</option>
+                @if (p.active) { <option [value]="p.id">{{ p.name }}</option> }
               }
             </select></label
           ><label
@@ -45,7 +48,7 @@ import {
             >Sucursal<select formControlName="branch">
               <option value="">Selecciona</option>
               @for (b of branches(); track b.id) {
-                <option [value]="b.name">{{ b.name }}</option>
+                @if (b.active) { <option [value]="b.id">{{ b.name }}</option> }
               }
             </select></label
           ><label
@@ -95,7 +98,7 @@ import {
           <tbody>
             @for (m of filtered(); track m.id) {
               <tr>
-                <td>{{ m.date }}</td>
+                <td>{{ m.date | date: 'dd/MM/yyyy HH:mm' }}</td>
                 <td>{{ m.product }}</td>
                 <td>
                   <span class="badge movement" [attr.data-type]="m.type">{{ m.type }}</span>
@@ -114,6 +117,8 @@ import {
     </article>`,
 })
 export class MovementsComponent {
+  auth = inject(AuthService);
+  roles = UserRole;
   private fb = inject(FormBuilder);
   private service = inject(InventoryService);
   showForm = signal(false);
@@ -153,21 +158,16 @@ export class MovementsComponent {
     this.form.markAllAsTouched();
     if (this.form.invalid) return;
     const v = this.form.getRawValue();
-    const signed = v.type === StockMovementType.Exit ? -v.quantity : v.quantity;
-    const movement: StockMovement = {
-      id: Date.now(),
-      code: `MOV-${String(Date.now()).slice(-3)}`,
-      date: new Date().toLocaleString('es-PE'),
-      product: v.product,
+    const movement = {
+      productId: Number(v.product),
       type: v.type as StockMovementType,
-      quantity: signed,
-      branch: v.branch,
+      quantity: v.quantity,
+      branchId: Number(v.branch),
       reference: v.reference,
-      responsible: 'Admin',
       observation: v.observation,
     };
-    this.service.addMovement(movement).subscribe(() => {
-      this.movements.update((list) => [movement, ...list]);
+    this.service.addMovement(movement).subscribe((saved) => {
+      this.movements.update((list) => [saved, ...list]);
       this.showForm.set(false);
     });
   }

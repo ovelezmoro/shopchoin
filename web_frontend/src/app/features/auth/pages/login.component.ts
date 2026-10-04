@@ -40,7 +40,7 @@ import { AuthService } from '../../../core/services/auth.service';
         ><span>¿Olvidaste tu contraseña?</span>
       </div>
       @if (loginError()) {
-        <div class="alert error-box">Credenciales incorrectas.</div>
+        <div class="alert error-box">{{ loginError() }}</div>
       }
       <button class="btn primary wide login-button" type="submit" [disabled]="loading()">
         {{ loading() ? 'Ingresando...' : 'Ingresar' }}
@@ -56,7 +56,7 @@ export class LoginComponent {
   private router = inject(Router);
   showPassword = signal(false);
   loading = signal(false);
-  loginError = signal(false);
+  loginError = signal('');
   form = this.fb.nonNullable.group({
     identifier: ['', Validators.required],
     password: ['', Validators.required],
@@ -65,10 +65,14 @@ export class LoginComponent {
     this.form.markAllAsTouched();
     if (this.form.invalid) return;
     this.loading.set(true);
+    this.loginError.set('');
     const v = this.form.getRawValue();
-    this.auth.login(v.identifier, v.password).subscribe((ok) => {
-      this.loading.set(false);
-      ok ? this.router.navigate(['/home']) : this.loginError.set(true);
+    this.auth.login(v.identifier, v.password).subscribe({
+      next: () => { this.loading.set(false); void this.router.navigate(['/home']); },
+      error: (error) => {
+        this.loading.set(false);
+        this.loginError.set(error.status === 0 ? 'No se puede conectar con el servidor.' : error.error?.detail || 'No se pudo iniciar sesión.');
+      },
     });
   }
 }

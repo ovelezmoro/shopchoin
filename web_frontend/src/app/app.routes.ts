@@ -1,5 +1,6 @@
 import { Routes } from '@angular/router';
 import { authGuard } from './core/guards/auth.guard';
+import { UserRole } from './core/models/shopchain.models';
 export const routes: Routes = [
   {
     path: 'login',
@@ -36,6 +37,8 @@ export const routes: Routes = [
       },
       {
         path: 'orders/new',
+        canActivate: [authGuard],
+        data: { roles: [UserRole.Admin, UserRole.Store] },
         loadComponent: () =>
           import('./features/orders/pages/new-order.component').then((m) => m.NewOrderComponent),
       },
@@ -69,6 +72,8 @@ export const routes: Routes = [
       },
       {
         path: 'administration',
+        canActivate: [authGuard],
+        data: { roles: [UserRole.Admin] },
         loadComponent: () =>
           import('./features/administration/pages/administration.component').then(
             (m) => m.AdministrationComponent,
@@ -76,6 +81,8 @@ export const routes: Routes = [
       },
       {
         path: 'administration/products',
+        canActivate: [authGuard],
+        data: { roles: [UserRole.Admin] },
         loadComponent: () =>
           import('./features/administration/pages/products-admin.component').then(
             (m) => m.ProductsAdminComponent,
@@ -83,6 +90,8 @@ export const routes: Routes = [
       },
       {
         path: 'administration/branches',
+        canActivate: [authGuard],
+        data: { roles: [UserRole.Admin] },
         loadComponent: () =>
           import('./features/administration/pages/branches-admin.component').then(
             (m) => m.BranchesAdminComponent,
@@ -90,6 +99,8 @@ export const routes: Routes = [
       },
       {
         path: 'administration/users',
+        canActivate: [authGuard],
+        data: { roles: [UserRole.Admin] },
         loadComponent: () =>
           import('./features/administration/pages/users-admin.component').then(
             (m) => m.UsersAdminComponent,

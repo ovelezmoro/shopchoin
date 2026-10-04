@@ -5,6 +5,8 @@ import { RouterLink } from '@angular/router';
 import { InventoryStatus, Product } from '../../../core/models/shopchain.models';
 import { ProductService } from '../../../core/services/product.service';
 import { InventoryService } from '../../../core/services/inventory.service';
+import { AuthService } from '../../../core/services/auth.service';
+import { UserRole } from '../../../core/models/shopchain.models';
 @Component({
   selector: 'app-catalog',
   imports: [FormsModule, CurrencyPipe, RouterLink],
@@ -13,7 +15,7 @@ import { InventoryService } from '../../../core/services/inventory.service';
         <div class="section-title">Catálogo de productos</div>
         <div class="section-subtitle">Consulta de productos y disponibilidad.</div>
       </div>
-      <a class="btn primary" routerLink="/administration/products">+ Nuevo producto</a>
+      @if (auth.hasRole(roles.Admin)) { <a class="btn primary" routerLink="/administration/products">+ Nuevo producto</a> }
     </div>
     <div class="card filter-card">
       <div class="filters four">
@@ -51,20 +53,30 @@ import { InventoryService } from '../../../core/services/inventory.service';
     </div>`,
 })
 export class CatalogComponent {
+  auth = inject(AuthService);
+  roles = UserRole;
   private service = inject(ProductService);
   query = '';
   category = '';
   brand = '';
   products = signal<Product[]>([]);
   stock: Record<number, number> = {};
-  categories = ['Running'];
-  brands = ['Nike', 'Adidas', 'Puma', 'New Balance', 'Asics'];
+  categories: string[] = [];
+  brands: string[] = [];
+  minimumStock: Record<number, number> = {};
   constructor() {
-    this.service.getProducts().subscribe((p) => this.products.set(p));
+    this.service.getProducts().subscribe((p) => {
+      this.products.set(p.filter((product) => product.active));
+      this.brands = [...new Set(this.products().map((product) => product.brand))];
+    });
+    this.service.getCategories().subscribe((c) => this.categories = c.map((category) => category.name));
     inject(InventoryService)
       .getInventory()
       .subscribe((items) =>
-        items.forEach((i) => (this.stock[i.productId] = (this.stock[i.productId] || 0) + i.stock)),
+        items.forEach((i) => {
+          this.stock[i.productId] = (this.stock[i.productId] || 0) + i.stock;
+          this.minimumStock[i.productId] = (this.minimumStock[i.productId] || 0) + i.minimumStock;
+        }),
       );
   }
   filtered(): Product[] {
@@ -80,7 +92,7 @@ export class CatalogComponent {
     const total = this.stock[id] || 0;
     return total === 0
       ? InventoryStatus.Out
-      : total <= 7
+      : total <= (this.minimumStock[id] || 0)
         ? InventoryStatus.Low
         : InventoryStatus.Available;
   }

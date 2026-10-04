@@ -2,7 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { CurrencyPipe } from '@angular/common';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { Branch, OrderItem, OrderStatus, Product } from '../../../core/models/shopchain.models';
+import { Branch, Product } from '../../../core/models/shopchain.models';
 import { ProductService } from '../../../core/services/product.service';
 import { BranchService } from '../../../core/services/branch.service';
 import { OrderService } from '../../../core/services/order.service';
@@ -29,7 +29,7 @@ interface DraftItem {
             >Sucursal de retiro<select formControlName="branch">
               <option value="">Selecciona una sucursal</option>
               @for (b of branches(); track b.id) {
-                <option [value]="b.name">{{ b.name }}</option>
+                <option [value]="b.id">{{ b.name }}</option>
               }
             </select></label
           >
@@ -94,21 +94,21 @@ export class NewOrderComponent {
   private router = inject(Router);
   products = signal<Product[]>([]);
   branches = signal<Branch[]>([]);
-  items = signal<DraftItem[]>([{ productId: 1, quantity: 1, size: 42 }]);
+  items = signal<DraftItem[]>([{ productId: 0, quantity: 1, size: 40 }]);
   itemError = signal(false);
   form = this.fb.nonNullable.group({
-    customer: ['Carlos Ramírez', Validators.required],
-    document: ['74125896', Validators.required],
-    branch: ['San Isidro', Validators.required],
-    observations: ['Retiro presencial. Confirmar disponibilidad antes de preparar.'],
+    customer: ['', Validators.required],
+    document: ['', Validators.required],
+    branch: ['', Validators.required],
+    observations: [''],
   });
   constructor() {
     inject(ProductService)
       .getProducts()
-      .subscribe((v) => this.products.set(v));
+      .subscribe((v) => this.products.set(v.filter((p) => p.active)));
     inject(BranchService)
       .getBranches()
-      .subscribe((v) => this.branches.set(v));
+      .subscribe((v) => this.branches.set(v.filter((b) => b.active)));
   }
   addItem(): void {
     this.items.update((v) => [...v, { productId: 0, quantity: 1, size: 40 }]);
@@ -136,34 +136,17 @@ export class NewOrderComponent {
   }
   submit(): void {
     this.form.markAllAsTouched();
-    const valid = this.items().every((i) => i.productId > 0 && i.quantity > 0 && i.size > 0);
+    const valid = this.items().every((i) => i.productId > 0 && Number.isInteger(i.quantity) && i.quantity > 0 && Number.isInteger(i.size) && i.size > 0);
     this.itemError.set(!valid);
     if (this.form.invalid || !valid) return;
     const v = this.form.getRawValue();
-    const orderItems: OrderItem[] = this.items().map((i) => {
-      const p = this.products().find((x) => x.id === i.productId)!;
-      return {
-        productId: p.id,
-        product: p.name,
-        price: p.price,
-        quantity: i.quantity,
-        subtotal: p.price * i.quantity,
-        size: i.size,
-      };
-    });
-    const id = Date.now();
     this.orders
       .createOrder({
-        id,
-        number: `PED-${String(id).slice(-4)}`,
-        date: new Date().toLocaleString('es-PE'),
         customer: v.customer,
         customerDocument: v.document,
-        branch: v.branch,
-        status: OrderStatus.Pending,
-        total: this.total(),
+        branchId: Number(v.branch),
         observations: v.observations,
-        items: orderItems,
+        items: this.items(),
       })
       .subscribe((o) => this.router.navigate(['/orders', o.id]));
   }

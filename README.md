@@ -1,33 +1,103 @@
-# shopchain
+# ShopChain — Backend Spring Boot
 
-Generated from the class Servlet 3+ / JSP archetype. Jakarta Servlet 6.0, targets Tomcat 10.1+.
+API REST para usuarios, catálogo, sucursales, inventario y pedidos. Implementada con **Java 17, Spring Boot 3.5, Spring Web, Spring Data JPA y H2**.
 
+## Ejecutar
 
+Requisitos: JDK 17 o superior compatible con Spring Boot 3.5 y Maven 3.6.3 o superior.
+
+```bash
+mvn spring-boot:run
 ```
-mvn clean package
+
+URL base: **http://localhost:8080/shopchain/api**.
+
+También se puede generar y ejecutar el JAR con Tomcat embebido:
+
+```bash
+mvn clean verify
+java -jar target/shopchain.jar
 ```
 
-This produces `target/shopchain.war`.
+El backend ya no requiere instalar Tomcat externo. Su interfaz es REST: las vistas JSP y los servlets iniciales fueron reemplazados por controladores Spring.
 
+## Datos de desarrollo
 
-**Option A — copy the WAR:**
-Copy `target/shopchain.war` into `$CATALINA_HOME/webapps/`, then (re)start Tomcat.
-Visit: `http://localhost:8080/shopchain/`
+El perfil predeterminado es `dev`. Al arrancar sobre una base vacía, crea:
 
-**Option B — Tomcat Manager:**
-Open `http://localhost:8080/manager/html`, use "WAR file to deploy" to upload
-`target/shopchain.war`.
+- Administrador: **`admin@shopchain.pe` / `admin123`**.
+- Una categoría, seis productos y cuatro sucursales.
+- Inventario por producto/sucursal y movimientos de carga inicial.
 
-**Option C — VS Code:**
-Install the "Community Server Connectors" extension (Red Hat), add your local Tomcat
-as a server, then drag the generated WAR onto it — or right-click the server and
-"Add Deployment".
+La carga inicial se ejecuta una sola vez sobre una base vacía; no reemplaza datos al reiniciar. Los pedidos se crean mediante la API.
 
+H2 guarda los datos en **`data/shopchain.mv.db`**, relativo al directorio desde el que se ejecuta la aplicación. La carpeta `data/` está excluida de Git. Para reiniciar la demostración, detener la aplicación y eliminar esa carpeta local.
 
+| Variable de entorno | Valor predeterminado | Uso |
+|---|---|---|
+| `PORT` | `8080` | Puerto HTTP |
+| `DB_URL` | `jdbc:h2:file:./data/shopchain` | Conexión H2 |
+| `DB_USERNAME` | `sa` | Usuario de base de datos |
+| `DB_PASSWORD` | vacío | Contraseña de base de datos |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost:4200` | Orígenes permitidos, separados por comas |
+| `DEMO_ADMIN_PASSWORD` | `admin123` | Contraseña usada al crear el administrador de demostración |
+
+`application-dev.yml` utiliza `ddl-auto: update` para crear y actualizar las tablas durante el desarrollo. La configuración base usa `validate`; si se activa otro perfil, debe prepararse su esquema y sus usuarios. El perfil `test` usa H2 en memoria, sin datos de demostración.
+
+## Estructura y recorrido del código
+
+```text
+src/main/java/pe/edu/upn/
+├── ShopchainApplication.java
+├── config/       # Seguridad, CORS y datos de demostración
+├── controller/   # Rutas HTTP y validación de solicitudes
+├── dto/          # Datos de entrada y salida de la API
+├── entity/       # Entidades y relaciones JPA
+├── exception/    # Errores de negocio y respuestas HTTP
+├── repository/   # Interfaces JpaRepository
+└── service/      # Reglas de negocio
 ```
-src/main/java/...HelloServlet.java     -> example @WebServlet, no web.xml mapping needed
-src/main/webapp/index.jsp              -> public landing page
-src/main/webapp/WEB-INF/views/hello.jsp-> only reachable via servlet forward
-src/main/webapp/WEB-INF/web.xml        -> welcome-file + session-config only
-src/main/webapp/css/style.css
+
+Flujo: **Controller → Service → Repository → H2**.
+
+Para estudiar el proyecto, empezar con `BranchController`, `BranchService`, `BranchRepository` y `Branch`. Después revisar `InventoryService` y `OrderService`.
+
+- Cada entidad tiene su propio `id`, atributos privados y getters/setters.
+- Los repositorios usan `JpaRepository` y métodos derivados, como `findByEmail`.
+- Los servicios reciben sus dependencias por constructor.
+- Los filtros se resuelven con listas, bucles y condiciones sencillas.
+- Los DTO evitan enviar entidades JPA o contraseñas almacenadas al cliente.
+- `@Transactional` permite guardar un pedido y sus movimientos como una sola operación: si falla, se deshacen todos los cambios.
+
+## API
+
+Consulta [documentation/API.md](documentation/API.md) para ver rutas, permisos, cuerpos JSON y un ejemplo completo de login con PowerShell.
+
+La autenticación usa Spring Security, contraseñas BCrypt y sesión HTTP. El login recibe un formulario con `identifier` y `password`; las demás escrituras reciben JSON. Las escrituras también requieren el token CSRF obtenido en `/auth/csrf`.
+
+### Reglas de inventario y pedidos
+
+- El inventario se registra por **producto y sucursal**, inicialmente con stock cero.
+- Las cantidades de entrada son positivas. El tipo de movimiento determina si se suman o se restan.
+- Un pedido descuenta stock al crearse y calcula precios y total desde los productos guardados.
+- Cancelar un pedido devuelve sus existencias una sola vez y registra movimientos de entrada.
+- Estados: `Pendiente → En preparación → Listo para retiro → Completado`.
+- Se permite cancelar antes de completar; un pedido completado no se cancela.
+- Los detalles conservan el nombre y precio del producto al comprar.
+- La talla es informativa: esta versión no lleva stock separado por talla.
+
+Esta implementación didáctica valida el stock disponible en cada operación, pero no incorpora bloqueos ni control de versiones para escrituras simultáneas. Los filtros y métricas recorren listas completas y están pensados para el volumen de datos del proyecto universitario.
+
+## Pruebas
+
+```bash
+mvn clean verify
 ```
+
+Las pruebas de integración de `ShopchainApiTest` utilizan Spring, MockMvc y una base H2 en memoria. Cubren login y logout, CSRF, roles, CRUD, restricciones de unicidad, movimientos, totales, estados, conservación de precios y rollback de pedidos fallidos.
+
+## Frontend Angular
+
+El frontend integrado se ejecuta por separado en `web_frontend/` con `npm install` y `npm start`. Abrir `http://localhost:4200` mientras el backend está en ejecución. Su configuración apunta a `http://localhost:8080/shopchain/api` y usa sesión HTTP con cookies y token CSRF. Angular no forma parte del JAR.
+
+Flujo para cargar stock desde la web: crear el producto en Administración, registrarlo en Inventario para una sucursal con su stock mínimo y registrar una entrada en Movimientos. Los pedidos descuentan existencias; su cancelación las devuelve. Ver [web_frontend/README.md](web_frontend/README.md).

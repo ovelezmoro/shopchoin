@@ -1,26 +1,21 @@
-import { Injectable } from '@angular/core';
-import { Observable, map, of } from 'rxjs';
-import { Product } from '../models/shopchain.models';
-import { PRODUCTS } from '../data/mock-data';
+import { Injectable, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Product, Category } from '../models/shopchain.models';
+import { ProductRequest } from '../models/requests.models';
+import { environment } from '../../../environments/environment';
 
 @Injectable({ providedIn: 'root' })
 export class ProductService {
-  getProducts(): Observable<Product[]> {
-    return of(PRODUCTS.map((p) => ({ ...p })));
+  private http = inject(HttpClient);
+  private url = `${environment.apiUrl}/products`;
+  getProducts() { return this.http.get<Product[]>(this.url); }
+  getProductById(id: number) { return this.http.get<Product>(`${this.url}/${id}`); }
+  getCategories() { return this.http.get<Category[]>(`${environment.apiUrl}/categories`); }
+  save(product: ProductRequest, id?: number) {
+    return id ? this.http.put<Product>(`${this.url}/${id}`, product) : this.http.post<Product>(this.url, product);
   }
-
-  getProductById(id: number): Observable<Product | undefined> {
-    return this.getProducts().pipe(map((list) => list.find((p) => p.id === id)));
-  }
-
-  save(product: Product): Observable<Product> {
-    const i = PRODUCTS.findIndex((p) => p.id === product.id);
-    i >= 0 ? PRODUCTS.splice(i, 1, product) : PRODUCTS.push({ ...product, id: Date.now() });
-    return of(product);
-  }
-
-  toggle(id: number): void {
-    const p = PRODUCTS.find((item) => item.id === id);
-    if (p) p.active = !p.active;
+  toggle(p: Product) {
+    const { sku, name, brand, categoryId, price, description, image } = p;
+    return this.save({ sku, name, brand, categoryId, price, description, image, active: !p.active }, p.id);
   }
 }

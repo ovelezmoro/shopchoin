@@ -39,6 +39,7 @@ export interface Branch {
   active: boolean;
 }
 export interface Product {
+  categoryId: number;
   id: number;
   sku: string;
   name: string;
@@ -54,6 +55,7 @@ export interface BranchStock {
   stock: number;
 }
 export interface InventoryItem {
+  branchId: number;
   id: number;
   productId: number;
   product: string;

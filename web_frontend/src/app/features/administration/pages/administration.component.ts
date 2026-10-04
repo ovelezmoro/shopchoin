@@ -24,7 +24,7 @@ import { ProductService } from '../../../core/services/product.service';
         ><span class="metric-icon">⌂</span>
         <div>
           <h2>Sucursales</h2>
-          <p>Administra San Miguel, San Isidro, Breña y Bellavista.</p>
+          <p>Administra las sucursales y sus datos de ubicación.</p>
           <strong>Gestionar sucursales</strong>
         </div></a
       ><a class="admin-card" routerLink="/administration/users"

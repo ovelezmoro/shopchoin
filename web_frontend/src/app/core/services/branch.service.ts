@@ -1,17 +1,15 @@
-import { Injectable } from '@angular/core';
-import { Observable, of } from 'rxjs';
+import { Injectable, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
 import { Branch } from '../models/shopchain.models';
-import { BRANCHES } from '../data/mock-data';
+import { environment } from '../../../environments/environment';
 
 @Injectable({ providedIn: 'root' })
 export class BranchService {
-  getBranches(): Observable<Branch[]> {
-    return of(BRANCHES.map((b) => ({ ...b })));
-  }
-
-  save(branch: Branch): Observable<Branch> {
-    const i = BRANCHES.findIndex((b) => b.id === branch.id);
-    i >= 0 ? BRANCHES.splice(i, 1, branch) : BRANCHES.push({ ...branch, id: Date.now() });
-    return of(branch);
+  private http = inject(HttpClient);
+  private url = `${environment.apiUrl}/branches`;
+  getBranches() { return this.http.get<Branch[]>(this.url); }
+  save(branch: Branch) {
+    const { id, ...body } = branch;
+    return id ? this.http.put<Branch>(`${this.url}/${id}`, body) : this.http.post<Branch>(this.url, body);
   }
 }
