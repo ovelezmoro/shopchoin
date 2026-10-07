@@ -8,8 +8,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
-import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jwt.*;
 import org.springframework.security.test.context.support.WithAnonymousUser;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.security.test.context.TestSecurityContextHolder;
@@ -19,9 +20,10 @@ import org.springframework.test.web.servlet.MvcResult;
 import pe.edu.upn.entity.*;
 import pe.edu.upn.repository.*;
 import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -40,6 +42,7 @@ class ShopchainApiTest {
     @Autowired private MovementRepository movements;
     @Autowired private OrderRepository orders;
     @Autowired private PasswordEncoder encoder;
+    @Autowired private JwtEncoder jwtEncoder;
 
     private Product product;
     private Branch branch;
@@ -92,68 +95,115 @@ class ShopchainApiTest {
 
     @Test
     @WithAnonymousUser
-    void sessionLoginCsrfAndLogoutWorkTogether() throws Exception {
-        // Esta prueba usa la sesión real, sin reemplazarla con la identidad de prueba.
+    void jsonLoginReturnsJwtAndAuthorizesRequestsWithoutSessionOrCsrf() throws Exception {
         TestSecurityContextHolder.clearContext();
         mvc.perform(get("/api/products")).andExpect(status().isUnauthorized());
-        MvcResult csrfResult = mvc.perform(get("/api/auth/csrf"))
-                .andExpect(status().isOk()).andReturn();
-        MockHttpSession session = (MockHttpSession) csrfResult.getRequest().getSession();
-        String token = json(csrfResult).get("token").asText();
-
-        mvc.perform(post("/api/auth/login").session(session)
-                        .header("X-CSRF-TOKEN", token)
-                        .param("identifier", " ADMIN@SHOPCHAIN.PE ").param("password", "admin123"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.email").value("admin@shopchain.pe"))
-                .andExpect(jsonPath("$.password").doesNotExist())
-                .andExpect(jsonPath("$.passwordHash").doesNotExist());
-        mvc.perform(get("/api/auth/me").session(session)).andExpect(status().isOk());
-        mvc.perform(post("/api/categories").session(session).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"Training\"}"))
-                .andExpect(status().isForbidden());
-
-        // Spring cambia el token al iniciar sesión; se solicita uno nuevo antes de escribir.
-        token = json(mvc.perform(get("/api/auth/csrf").session(session)).andReturn()).get("token").asText();
-        mvc.perform(post("/api/categories").session(session).header("X-CSRF-TOKEN", token)
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Training\"}"))
-                .andExpect(status().isCreated());
-        mvc.perform(post("/api/auth/logout").session(session).header("X-CSRF-TOKEN", token))
-                .andExpect(status().isNoContent());
-        assertThat(session.isInvalid()).isTrue();
+        MvcResult login = mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"identifier\":\" ADMIN@SHOPCHAIN.PE \",\"password\":\"admin123\"}"))
+                 .andExpect(status().isOk())
+                 .andExpect(header().doesNotExist("Set-Cookie"))
+                 .andExpect(header().string("Cache-Control", "no-store"))
+                 .andExpect(jsonPath("$.tokenType").value("Bearer"))
+                 .andExpect(jsonPath("$.expiresIn").value(1800))
+                 .andExpect(jsonPath("$.user.email").value("admin@shopchain.pe"))
+                 .andExpect(jsonPath("$.user.password").doesNotExist())
+                 .andExpect(jsonPath("$.user.passwordHash").doesNotExist()).andReturn();
+        assertThat(login.getRequest().getSession(false)).isNull();
+        String token = json(login).get("accessToken").asText();
+        mvc.perform(get("/api/auth/me").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.email").value("admin@shopchain.pe"));
+        MvcResult write = mvc.perform(post("/api/categories").header("Authorization", "Bearer " + token)
+                         .contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Training\"}"))
+                 .andExpect(status().isCreated()).andReturn();
+        assertThat(write.getRequest().getSession(false)).isNull();
         mvc.perform(get("/api/auth/me")).andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/categories").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Sin token\"}")).andExpect(status().isUnauthorized());
     }
 
     @Test
     @WithAnonymousUser
     void rejectsIncorrectPasswordAndInactiveUsers() throws Exception {
-        mvc.perform(post("/api/auth/login").with(csrf()).param("identifier", "admin@shopchain.pe")
-                        .param("password", "incorrecta"))
+        mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"identifier\":\"admin@shopchain.pe\",\"password\":\"incorrecta\"}"))
                 .andExpect(status().isUnauthorized());
         User admin = users.findByEmail("admin@shopchain.pe").orElseThrow();
         admin.setActive(false);
         users.save(admin);
-        mvc.perform(post("/api/auth/login").with(csrf()).param("identifier", "admin@shopchain.pe")
-                        .param("password", "admin123"))
-                .andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"identifier\":\"admin@shopchain.pe\",\"password\":\"admin123\"}"))
+                 .andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithAnonymousUser
+    void rejectsExpiredMalformedTamperedAndWrongIssuerTokens() throws Exception {
+        TestSecurityContextHolder.clearContext();
+        String valid = signedToken("shopchain", Instant.now().plusSeconds(300));
+        String[] parts = valid.split("\\.");
+        String tampered = parts[0] + "." + parts[1] + "."
+                + (parts[2].startsWith("A") ? "B" : "A") + parts[2].substring(1);
+        for (String token : List.of("invalid", tampered,
+                signedToken("shopchain", Instant.now().minusSeconds(5)),
+                signedToken("another-app", Instant.now().plusSeconds(300)))) {
+            mvc.perform(get("/api/products").header("Authorization", "Bearer " + token))
+                    .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.status").value(401));
+        }
+        mvc.perform(get("/api/products").param("access_token", valid)).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @WithAnonymousUser
+    void jwtRolesEnforcePermissions() throws Exception {
+        TestSecurityContextHolder.clearContext();
+        User store = new User();
+        store.setNames("Tienda");
+        store.setEmail("store@shopchain.pe");
+        store.setPasswordHash(encoder.encode("password123"));
+        store.setRole(UserRole.STORE);
+        store.setActive(true);
+        users.save(store);
+        MvcResult login = mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"identifier\":\"store@shopchain.pe\",\"password\":\"password123\"}"))
+                .andExpect(status().isOk()).andReturn();
+        String token = json(login).get("accessToken").asText();
+        mvc.perform(get("/api/products").header("Authorization", "Bearer " + token)).andExpect(status().isOk());
+        mvc.perform(get("/api/users").header("Authorization", "Bearer " + token)).andExpect(status().isForbidden());
+        mvc.perform(post("/api/stock-movements").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON).content(movementBody("ENTRADA", 2)))
+                .andExpect(status().isForbidden());
+        mvc.perform(post("/api/orders").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(orderBody("{\"productId\":" + product.getId() + ",\"quantity\":1}")))
+                .andExpect(status().isCreated());
+    }
+
+    private String signedToken(String issuer, Instant expiration) {
+        JwtClaimsSet claims = JwtClaimsSet.builder().issuer(issuer).subject("admin@shopchain.pe")
+                .issuedAt(Instant.now().minusSeconds(3600)).expiresAt(expiration)
+                .claim("roles", List.of("ROLE_ADMIN")).build();
+        return jwtEncoder.encode(JwtEncoderParameters.from(
+                JwsHeader.with(MacAlgorithm.HS256).build(), claims)).getTokenValue();
     }
 
     @Test
     void productCrudFiltersValidationAndUniqueness() throws Exception {
         String body = productBody("NEW-001");
-        MvcResult created = mvc.perform(post("/api/products").with(csrf())
+        MvcResult created = mvc.perform(post("/api/products")
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated()).andExpect(jsonPath("$.category").value("Running")).andReturn();
         long id = json(created).get("id").asLong();
         mvc.perform(get("/api/products/{id}", id)).andExpect(status().isOk());
-        mvc.perform(put("/api/products/{id}", id).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(put("/api/products/{id}", id).contentType(MediaType.APPLICATION_JSON)
                         .content(body.replace("\"active\":true", "\"active\":false")))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.active").value(false));
         mvc.perform(get("/api/products").param("search", "NEW-001").param("active", "false"))
                 .andExpect(jsonPath("$.length()").value(1));
-        mvc.perform(post("/api/products").with(csrf()).contentType(MediaType.APPLICATION_JSON).content(body))
+        mvc.perform(post("/api/products").contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isConflict());
-        mvc.perform(post("/api/products").with(csrf()).contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(post("/api/products").contentType(MediaType.APPLICATION_JSON)
                         .content(body.replace("99.90", "-1")))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.fields.price").exists());
         mvc.perform(get("/api/products/999999")).andExpect(status().isNotFound());
@@ -162,17 +212,17 @@ class ShopchainApiTest {
 
     @Test
     void branchAndInventoryCreationUseExistingReferences() throws Exception {
-        MvcResult created = mvc.perform(post("/api/branches").with(csrf()).contentType(MediaType.APPLICATION_JSON)
+        MvcResult created = mvc.perform(post("/api/branches").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"Breña\",\"address\":\"Jr. Huaraz\",\"location\":\"Lima\"}"))
                 .andExpect(status().isCreated()).andReturn();
         long branchId = json(created).get("id").asLong();
         String body = "{\"productId\":" + product.getId() + ",\"branchId\":" + branchId + ",\"minimumStock\":3}";
-        mvc.perform(post("/api/inventory").with(csrf()).contentType(MediaType.APPLICATION_JSON).content(body))
+        mvc.perform(post("/api/inventory").contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated()).andExpect(jsonPath("$.stock").value(0))
                 .andExpect(jsonPath("$.status").value("Sin stock"));
-        mvc.perform(post("/api/inventory").with(csrf()).contentType(MediaType.APPLICATION_JSON).content(body))
+        mvc.perform(post("/api/inventory").contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isConflict());
-        mvc.perform(post("/api/inventory").with(csrf()).contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(post("/api/inventory").contentType(MediaType.APPLICATION_JSON)
                         .content(body.replace("\"productId\":" + product.getId(), "\"productId\":999999")))
                 .andExpect(status().isNotFound());
     }
@@ -183,14 +233,14 @@ class ShopchainApiTest {
                 {"names":"Almacenero","email":"warehouse@shopchain.pe","password":"password123",
                  "role":"ALMACÉN","active":true}
                 """;
-        mvc.perform(post("/api/users").with(csrf()).contentType(MediaType.APPLICATION_JSON).content(body))
+        mvc.perform(post("/api/users").contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated()).andExpect(jsonPath("$.role").value("ALMACÉN"))
                 .andExpect(jsonPath("$.password").doesNotExist());
         User user = users.findByEmail("warehouse@shopchain.pe").orElseThrow();
         assertThat(encoder.matches("password123", user.getPasswordHash())).isTrue();
-        mvc.perform(post("/api/users").with(csrf()).contentType(MediaType.APPLICATION_JSON).content(body))
+        mvc.perform(post("/api/users").contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isConflict());
-        mvc.perform(put("/api/users/{id}", user.getId()).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(put("/api/users/{id}", user.getId()).contentType(MediaType.APPLICATION_JSON)
                         .content(body.replace(",\"password\":\"password123\"", "").replace("true", "false")))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.active").value(false));
         assertThat(users.findById(user.getId()).orElseThrow().getPasswordHash()).isEqualTo(user.getPasswordHash());
@@ -200,30 +250,30 @@ class ShopchainApiTest {
     @WithMockUser(roles = "STORE")
     void storeCannotAdministerUsersOrRegisterManualMovements() throws Exception {
         mvc.perform(get("/api/users")).andExpect(status().isForbidden());
-        mvc.perform(post("/api/products").with(csrf()).contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(post("/api/products").contentType(MediaType.APPLICATION_JSON)
                         .content(productBody("NEW-001"))).andExpect(status().isForbidden());
-        mvc.perform(post("/api/stock-movements").with(csrf()).contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(post("/api/stock-movements").contentType(MediaType.APPLICATION_JSON)
                         .content(movementBody("ENTRADA", 2))).andExpect(status().isForbidden());
         mvc.perform(get("/api/products")).andExpect(status().isOk());
     }
 
     @Test
     void stockMovementsUpdateStockAndRejectInsufficientBalance() throws Exception {
-        mvc.perform(post("/api/stock-movements").with(csrf()).contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(post("/api/stock-movements").contentType(MediaType.APPLICATION_JSON)
                         .content(movementBody("SALIDA", 3)))
                 .andExpect(status().isCreated()).andExpect(jsonPath("$.quantity").value(-3))
                 .andExpect(jsonPath("$.responsible").value("admin@shopchain.pe"));
         assertThat(stock()).isEqualTo(2);
         mvc.perform(get("/api/inventory").param("status", "Stock bajo"))
                 .andExpect(jsonPath("$.length()").value(1));
-        mvc.perform(post("/api/stock-movements").with(csrf()).contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(post("/api/stock-movements").contentType(MediaType.APPLICATION_JSON)
                         .content(movementBody("SALIDA", 3))).andExpect(status().isConflict());
         assertThat(stock()).isEqualTo(2);
         assertThat(movements.count()).isEqualTo(1);
-        mvc.perform(post("/api/stock-movements").with(csrf()).contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(post("/api/stock-movements").contentType(MediaType.APPLICATION_JSON)
                         .content(movementBody("REPOSICIÓN", 4))).andExpect(status().isCreated());
         assertThat(stock()).isEqualTo(6);
-        mvc.perform(post("/api/stock-movements").with(csrf()).contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(post("/api/stock-movements").contentType(MediaType.APPLICATION_JSON)
                         .content(movementBody("ENTRADA", 0))).andExpect(status().isBadRequest());
     }
 
@@ -249,7 +299,7 @@ class ShopchainApiTest {
     void failedOrderRollsBackEarlierItemsAndMovements() throws Exception {
         String item = "{\"productId\":" + product.getId() + ",\"quantity\":3}";
         String body = orderBody(item + "," + item);
-        mvc.perform(post("/api/orders").with(csrf()).contentType(MediaType.APPLICATION_JSON).content(body))
+        mvc.perform(post("/api/orders").contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isConflict());
         assertThat(stock()).isEqualTo(5);
         assertThat(orders.count()).isZero();
@@ -274,13 +324,13 @@ class ShopchainApiTest {
 
     @Test
     void rejectsInvalidOrdersAndInactiveProducts() throws Exception {
-        mvc.perform(post("/api/orders").with(csrf()).contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(post("/api/orders").contentType(MediaType.APPLICATION_JSON)
                         .content(orderBody(""))).andExpect(status().isBadRequest());
-        mvc.perform(post("/api/orders").with(csrf()).contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(post("/api/orders").contentType(MediaType.APPLICATION_JSON)
                         .content(orderBody("null"))).andExpect(status().isBadRequest());
         product.setActive(false);
         products.save(product);
-        mvc.perform(post("/api/orders").with(csrf()).contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(post("/api/orders").contentType(MediaType.APPLICATION_JSON)
                         .content(orderBody("{\"productId\":" + product.getId() + ",\"quantity\":1}")))
                 .andExpect(status().isConflict());
         assertThat(stock()).isEqualTo(5);
@@ -301,13 +351,14 @@ class ShopchainApiTest {
 
     @Test
     @WithAnonymousUser
-    void corsAllowsConfiguredFrontendWithCredentials() throws Exception {
+    void corsAllowsBearerHeaderFromConfiguredFrontend() throws Exception {
         mvc.perform(options("/api/products").header("Origin", "http://localhost:4200")
                         .header("Access-Control-Request-Method", "POST")
-                        .header("Access-Control-Request-Headers", "Content-Type,X-CSRF-TOKEN"))
+                         .header("Access-Control-Request-Headers", "Content-Type,Authorization"))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:4200"))
-                .andExpect(header().string("Access-Control-Allow-Credentials", "true"));
+                 .andExpect(header().string("Access-Control-Allow-Headers", "Content-Type, Authorization"))
+                 .andExpect(header().doesNotExist("Access-Control-Allow-Credentials"));
     }
 
     private JsonNode json(MvcResult result) throws Exception {
@@ -339,14 +390,14 @@ class ShopchainApiTest {
 
     private long createOrder(int quantity) throws Exception {
         String item = "{\"productId\":" + product.getId() + ",\"quantity\":" + quantity + "}";
-        MvcResult result = mvc.perform(post("/api/orders").with(csrf()).contentType(MediaType.APPLICATION_JSON)
+        MvcResult result = mvc.perform(post("/api/orders").contentType(MediaType.APPLICATION_JSON)
                         .content(orderBody(item)))
                 .andExpect(status().isCreated()).andReturn();
         return json(result).get("id").asLong();
     }
 
     private void changeStatus(long id, String next, int expectedStatus) throws Exception {
-        mvc.perform(patch("/api/orders/{id}/status", id).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(patch("/api/orders/{id}/status", id).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":\"" + next + "\"}"))
                 .andExpect(status().is(expectedStatus));
     }

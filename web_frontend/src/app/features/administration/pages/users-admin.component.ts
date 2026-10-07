@@ -5,50 +5,67 @@ import { UserService } from '../../../core/services/user.service';
 @Component({
   selector: 'app-users-admin',
   imports: [ReactiveFormsModule],
-  template: `<div class="page-head">
+  template: `<div
+      class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4"
+    >
       <div>
-        <p class="eyebrow">ADMINISTRACIÓN</p>
-        <h1>Gestión de usuarios</h1>
-        <p>Administra accesos y roles del equipo.</p>
+        <p class="text-primary small fw-bold mb-1">ADMINISTRACIÓN</p>
+        <h1 class="h3">Gestión de usuarios</h1>
+        <p class="text-body-secondary mb-0">Administra accesos y roles del equipo.</p>
       </div>
-      <button class="btn primary" (click)="open()">+ Agregar usuario</button>
+      <button class="btn btn-primary" (click)="open()">+ Agregar usuario</button>
     </div>
     @if (showForm()) {
-      <form class="card form-card" [formGroup]="form" (ngSubmit)="save()">
-        <div class="card-head">
-          <h2>Usuario</h2>
-          <button type="button" class="link-btn" (click)="showForm.set(false)">Cerrar</button>
+      <form class="card shadow-sm p-4 mb-4" [formGroup]="form" (ngSubmit)="save()">
+        <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
+          <h2 class="h5 mb-0">Usuario</h2>
+          <button
+            type="button"
+            class="btn btn-outline-secondary btn-sm"
+            (click)="showForm.set(false)"
+          >
+            Cerrar
+          </button>
         </div>
-        <div class="form-grid">
-          <label>Nombres<input formControlName="names" /></label
-          ><label>Correo<input type="email" formControlName="email" /></label
-          ><label>Contraseña<input type="password" formControlName="password" /></label
-          ><label
-            >Rol<select formControlName="role">
+        <div class="row g-3">
+          <label class="col-12 col-md-6 form-label"
+            >Nombres<input class="form-control" formControlName="names" /></label
+          ><label class="col-12 col-md-6 form-label"
+            >Correo<input class="form-control" type="email" formControlName="email" /></label
+          ><label class="col-12 col-md-6 form-label"
+            >Contraseña<input
+              class="form-control"
+              type="password"
+              formControlName="password" /></label
+          ><label class="col-12 col-md-6 form-label"
+            >Rol<select class="form-select" formControlName="role">
               <option value="">Selecciona</option>
               <option>ADMINISTRADOR</option>
               <option>ALMACÉN</option>
               <option>TIENDA</option>
             </select></label
-          ><label
-            >Estado<select formControlName="active">
+          ><label class="col-12 col-md-6 form-label"
+            >Estado<select class="form-select" formControlName="active">
               <option [ngValue]="true">Activo</option>
               <option [ngValue]="false">Inactivo</option>
             </select></label
           >
         </div>
         @if (form.touched && form.invalid) {
-          <small class="error"
-            >Completa los campos. La contraseña requiere al menos 8 caracteres; al editar puedes dejarla vacía para conservarla.</small
+          <small class="invalid-feedback d-block"
+            >Completa los campos. La contraseña requiere al menos 8 caracteres; al editar puedes
+            dejarla vacía para conservarla.</small
           >
         }
-        <div class="form-actions"><button class="btn primary">Guardar usuario</button></div>
+        <div class="d-flex justify-content-end mt-3">
+          <button class="btn btn-primary">Guardar usuario</button>
+        </div>
       </form>
     }
-    <article class="card">
-      <div class="table-wrap">
-        <table>
-          <thead>
+    <article class="card shadow-sm p-4">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle">
+          <thead class="table-light">
             <tr>
               <th>Nombres</th>
               <th>Correo</th>
@@ -65,14 +82,17 @@ import { UserService } from '../../../core/services/user.service';
                 </td>
                 <td>{{ u.email }}</td>
                 <td>
-                  <span class="badge info">{{ u.role }}</span>
+                  <span class="badge text-bg-info">{{ u.role }}</span>
                 </td>
                 <td>
-                  <span class="badge" [class.success]="u.active">{{
-                    u.active ? 'Activo' : 'Inactivo'
-                  }}</span>
+                  <span
+                    class="badge"
+                    [class.text-bg-success]="u.active"
+                    [class.text-bg-secondary]="!u.active"
+                    >{{ u.active ? 'Activo' : 'Inactivo' }}</span
+                  >
                 </td>
-                <td><button class="action" (click)="edit(u)">Editar</button></td>
+                <td><button class="btn btn-link btn-sm" (click)="edit(u)">Editar</button></td>
               </tr>
             }
           </tbody>
@@ -122,13 +142,16 @@ export class UsersAdminComponent {
     if (this.form.invalid) return;
     const v = this.form.getRawValue();
     this.service
-      .save({
-        ...(v.password ? { password: v.password } : {}),
-        names: v.names,
-        email: v.email,
-        role: v.role as UserRole,
-        active: v.active,
-      }, this.editingId() ?? undefined)
+      .save(
+        {
+          ...(v.password ? { password: v.password } : {}),
+          names: v.names,
+          email: v.email,
+          role: v.role as UserRole,
+          active: v.active,
+        },
+        this.editingId() ?? undefined,
+      )
       .subscribe(() => {
         this.load();
         this.showForm.set(false);

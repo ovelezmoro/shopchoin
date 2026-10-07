@@ -1,0 +1,786 @@
+openapi: 3.0.3
+info:
+  title: ShopChain API
+  version: 1.0.0
+  description: |
+    API de catálogo, inventario y pedidos de ShopChain.
+
+    Autenticación con JWT Bearer, sin cookies ni sesión HTTP.
+    POST /auth/login recibe JSON con identifier y password y devuelve accessToken,
+    tokenType, expiresIn (segundos) y user. Enviar Authorization: Bearer <accessToken>.
+    En Swagger, ejecutar login, copiar accessToken y pegarlo en Authorize.
+    El token vence a los 30 minutos de su emisión por defecto; no se renueva.
+    Al vencer, iniciar sesión nuevamente. Cerrar sesión significa borrar el token
+    del cliente; no existe un endpoint de logout ni revocación de tokens.
+    Los permisos del token se mantienen hasta su vencimiento, aunque se cambie
+    el rol, correo, contraseña o estado del usuario en la base de datos.
+
+    Todas las rutas de negocio requieren un JWT válido. Los permisos adicionales se
+    indican en cada operación. Los listados son arrays sin paginación.
+    Los IDs de los ejemplos son ilustrativos; consultar primero los listados.
+    Las propiedades desconocidas de las solicitudes JSON se rechazan.
+servers:
+  - url: .
+    description: Misma instancia y contexto que sirve /api/openapi.yml
+security:
+  - bearerAuth: []
+tags:
+  - name: Autenticación
+  - name: Usuarios
+  - name: Categorías
+  - name: Productos
+  - name: Sucursales
+  - name: Inventario
+  - name: Movimientos
+  - name: Pedidos
+  - name: Dashboard
+paths:
+  /auth/login:
+    post:
+      tags: [Autenticación]
+      operationId: login
+      summary: Iniciar sesión
+      description: El correo identifica al usuario. Devuelve un JWT firmado con HS256 y duración fija.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [identifier, password]
+              properties:
+                identifier: {type: string, format: email, example: admin@shopchain.pe}
+                password: {type: string, format: password, writeOnly: true}
+      responses:
+        '200':
+          description: Token y datos del usuario autenticado
+          headers:
+            Cache-Control:
+              schema: {type: string, example: no-store}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/LoginResponse'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /auth/me:
+    get:
+      tags: [Autenticación]
+      operationId: currentUser
+      summary: Consultar usuario identificado por el JWT
+      responses:
+        '200':
+          description: Usuario actual
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/User'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /users:
+    get:
+      tags: [Usuarios]
+      operationId: listUsers
+      summary: Listar usuarios
+      description: Solo ADMINISTRADOR.
+      responses:
+        '200':
+          description: Usuarios registrados
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/User'}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      tags: [Usuarios]
+      operationId: createUser
+      summary: Crear usuario
+      description: Solo ADMINISTRADOR. El correo se guarda en minúsculas y debe ser único.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/UserCreate'}
+      responses:
+        '201':
+          description: Usuario creado
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/User'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /users/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Usuarios]
+      operationId: getUser
+      summary: Consultar usuario
+      description: Solo ADMINISTRADOR.
+      responses:
+        '200':
+          description: Usuario encontrado
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/User'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    put:
+      tags: [Usuarios]
+      operationId: updateUser
+      summary: Actualizar usuario
+      description: Solo ADMINISTRADOR. Omitir password conserva la contraseña. Los cambios de autenticación se aplican al volver a iniciar sesión. Enviar todos los campos editables.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/User'}
+      responses:
+        '200':
+          description: Usuario actualizado
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/User'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /categories:
+    get:
+      tags: [Categorías]
+      operationId: listCategories
+      summary: Listar categorías
+      responses:
+        '200':
+          description: Categorías registradas
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/Category'}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+    post:
+      tags: [Categorías]
+      operationId: createCategory
+      summary: Crear categoría
+      description: Solo ADMINISTRADOR.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Category'}
+      responses:
+        '201':
+          description: Categoría creada
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Category'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /products:
+    get:
+      tags: [Productos]
+      operationId: listProducts
+      summary: Listar productos
+      parameters:
+        - name: search
+          in: query
+          schema: {type: string}
+          example: nike
+        - name: categoryId
+          in: query
+          schema: {type: integer, format: int64}
+        - name: active
+          in: query
+          schema: {type: boolean}
+      responses:
+        '200':
+          description: Productos que cumplen los filtros
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/Product'}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+    post:
+      tags: [Productos]
+      operationId: createProduct
+      summary: Crear producto
+      description: Solo ADMINISTRADOR. El SKU se guarda en mayúsculas y debe ser único.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Product'}
+      responses:
+        '201':
+          description: Producto creado
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Product'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /products/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Productos]
+      operationId: getProduct
+      summary: Consultar producto
+      responses:
+        '200':
+          description: Producto encontrado
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Product'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    put:
+      tags: [Productos]
+      operationId: updateProduct
+      summary: Actualizar producto
+      description: Solo ADMINISTRADOR. Enviar todos los campos editables; active false desactiva conservando el historial.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Product'}
+      responses:
+        '200':
+          description: Producto actualizado
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Product'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /branches:
+    get:
+      tags: [Sucursales]
+      operationId: listBranches
+      summary: Listar sucursales
+      responses:
+        '200':
+          description: Sucursales registradas
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/Branch'}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+    post:
+      tags: [Sucursales]
+      operationId: createBranch
+      summary: Crear sucursal
+      description: Solo ADMINISTRADOR.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Branch'}
+      responses:
+        '201':
+          description: Sucursal creada
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Branch'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /branches/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Sucursales]
+      operationId: getBranch
+      summary: Consultar sucursal
+      responses:
+        '200':
+          description: Sucursal encontrada
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Branch'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    put:
+      tags: [Sucursales]
+      operationId: updateBranch
+      summary: Actualizar sucursal
+      description: Solo ADMINISTRADOR. Enviar todos los campos editables; active false desactiva conservando el historial.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Branch'}
+      responses:
+        '200':
+          description: Sucursal actualizada
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Branch'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /inventory:
+    get:
+      tags: [Inventario]
+      operationId: listInventory
+      summary: Consultar existencias
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/BranchId'
+        - name: status
+          in: query
+          schema: {$ref: '#/components/schemas/InventoryStatus'}
+      responses:
+        '200':
+          description: Stock por producto y sucursal
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/Inventory'}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+    post:
+      tags: [Inventario]
+      operationId: createInventory
+      summary: Registrar inventario con stock cero
+      description: ADMINISTRADOR o ALMACÉN. Una sola fila por producto/sucursal. Cargar stock mediante movimientos.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/InventoryRequest'}
+      responses:
+        '201':
+          description: Inventario registrado
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Inventory'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /stock-movements:
+    get:
+      tags: [Movimientos]
+      operationId: listMovements
+      summary: Consultar movimientos
+      description: Ordenados del más reciente al más antiguo. Las salidas tienen cantidad negativa.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/BranchId'
+      responses:
+        '200':
+          description: Movimientos registrados
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/Movement'}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+    post:
+      tags: [Movimientos]
+      operationId: createMovement
+      summary: Registrar movimiento manual
+      description: ADMINISTRADOR o ALMACÉN. El inventario debe existir y producto y sucursal deben estar activos. El responsable es el correo del usuario autenticado. Una salida requiere stock suficiente.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MovementRequest'}
+      responses:
+        '201':
+          description: Movimiento registrado y stock actualizado
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Movement'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /orders:
+    get:
+      tags: [Pedidos]
+      operationId: listOrders
+      summary: Listar pedidos
+      parameters:
+        - $ref: '#/components/parameters/BranchId'
+        - name: status
+          in: query
+          schema: {$ref: '#/components/schemas/OrderStatus'}
+      responses:
+        '200':
+          description: Pedidos que cumplen los filtros
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/Order'}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+    post:
+      tags: [Pedidos]
+      operationId: createOrder
+      summary: Crear pedido y descontar stock
+      description: ADMINISTRADOR o TIENDA. Precios y totales calculados por el servidor. Registra una salida por detalle; si falta stock se revierte toda la operación. La talla es informativa.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/OrderRequest'}
+      responses:
+        '201':
+          description: Pedido creado
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Order'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /orders/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Pedidos]
+      operationId: getOrder
+      summary: Consultar detalle de pedido
+      responses:
+        '200':
+          description: Pedido encontrado
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Order'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /orders/{id}/status:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    patch:
+      tags: [Pedidos]
+      operationId: changeOrderStatus
+      summary: Cambiar estado de pedido
+      description: |
+        ADMINISTRADOR, TIENDA o ALMACÉN.
+        Pendiente → En preparación → Listo para retiro → Completado.
+        Se permite Cancelado desde cualquier estado anterior a Completado.
+        Cancelar devuelve stock una sola vez. Repetir el estado actual es idempotente.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [status]
+              properties:
+                status: {$ref: '#/components/schemas/OrderStatus'}
+            example: {status: En preparación}
+      responses:
+        '200':
+          description: Pedido actualizado
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Order'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /dashboard/metrics:
+    get:
+      tags: [Dashboard]
+      operationId: dashboardMetrics
+      summary: Consultar métricas generales
+      responses:
+        '200':
+          description: Métricas del dashboard
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/DashboardMetric'}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /dashboard/branches:
+    get:
+      tags: [Dashboard]
+      operationId: dashboardBranches
+      summary: Consultar porcentaje de stock por sucursal
+      responses:
+        '200':
+          description: Distribución del stock total
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/BranchSummary'}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /dashboard/activity:
+    get:
+      tags: [Dashboard]
+      operationId: dashboardActivity
+      summary: Consultar los últimos diez movimientos
+      responses:
+        '200':
+          description: Actividad reciente
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/RecentActivity'}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Pegar accessToken devuelto por POST /auth/login, sin el prefijo Bearer.
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: {type: integer, format: int64}
+      example: 1
+    ProductId:
+      name: productId
+      in: query
+      schema: {type: integer, format: int64}
+    BranchId:
+      name: branchId
+      in: query
+      schema: {type: integer, format: int64}
+  responses:
+    BadRequest:
+      description: Validación, formato o valor de parámetro inválido
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+    Unauthorized:
+      description: JWT ausente, inválido o vencido; credenciales incorrectas o usuario inactivo al autenticar
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/SecurityError'}
+          example: {status: 401, detail: Debes iniciar sesión.}
+    Forbidden:
+      description: Rol sin permiso para la operación
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/SecurityError'}
+          example: {status: 403, detail: No tienes permiso para esta operación.}
+    NotFound:
+      description: Recurso inexistente
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+    Conflict:
+      description: Datos duplicados o regla de negocio incumplida (stock insuficiente, transición de estado inválida, etc.)
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+  schemas:
+    LoginResponse:
+      type: object
+      required: [accessToken, tokenType, expiresIn, user]
+      properties:
+        accessToken: {type: string, description: JWT firmado con HS256}
+        tokenType: {type: string, enum: [Bearer]}
+        expiresIn: {type: integer, format: int64, description: Duración del token en segundos, example: 1800}
+        user: {$ref: '#/components/schemas/User'}
+    User:
+      type: object
+      additionalProperties: false
+      required: [names, email, role]
+      properties:
+        id: {type: integer, format: int64, readOnly: true}
+        names: {type: string, minLength: 1, maxLength: 120, example: Ana Torres}
+        email: {type: string, format: email, maxLength: 254, example: ana@shopchain.pe}
+        password:
+          type: string
+          format: password
+          writeOnly: true
+          minLength: 8
+          maxLength: 72
+          description: Obligatoria al crear; omitir al actualizar conserva la actual. Máximo 72 bytes UTF-8.
+        role: {type: string, enum: [ADMINISTRADOR, ALMACÉN, TIENDA]}
+        active: {type: boolean, default: true}
+    UserCreate:
+      allOf:
+        - $ref: '#/components/schemas/User'
+        - type: object
+          required: [password]
+    Category:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        id: {type: integer, format: int64, readOnly: true}
+        name: {type: string, minLength: 1, maxLength: 80, example: Training}
+    Product:
+      type: object
+      additionalProperties: false
+      required: [sku, name, brand, categoryId, price]
+      properties:
+        id: {type: integer, format: int64, readOnly: true}
+        sku: {type: string, minLength: 1, maxLength: 60, example: NK-TEST-001}
+        name: {type: string, minLength: 1, maxLength: 160, example: Zapatilla deportiva}
+        brand: {type: string, minLength: 1, maxLength: 80, example: Nike}
+        categoryId: {type: integer, format: int64, minimum: 1, example: 1}
+        category: {type: string, readOnly: true}
+        price: {type: number, minimum: 0.01, maximum: 9999999999.99, multipleOf: 0.01, example: 199.90}
+        description: {type: string, maxLength: 2000, default: ''}
+        image: {type: string, maxLength: 10000, default: ''}
+        active: {type: boolean, default: true}
+    Branch:
+      type: object
+      additionalProperties: false
+      required: [name, address, location]
+      properties:
+        id: {type: integer, format: int64, readOnly: true}
+        name: {type: string, minLength: 1, maxLength: 120, example: Surco}
+        address: {type: string, minLength: 1, maxLength: 250, example: Av. Benavides 1000}
+        location: {type: string, minLength: 1, maxLength: 120, example: Lima}
+        active: {type: boolean, default: true}
+    InventoryStatus:
+      type: string
+      enum: [Disponible, Stock bajo, Sin stock]
+    InventoryRequest:
+      type: object
+      additionalProperties: false
+      required: [productId, branchId]
+      properties:
+        productId: {type: integer, format: int64, minimum: 1, example: 1}
+        branchId: {type: integer, format: int64, minimum: 1, example: 1}
+        minimumStock: {type: integer, format: int32, minimum: 0, default: 0, example: 3}
+    Inventory:
+      type: object
+      properties:
+        id: {type: integer, format: int64}
+        productId: {type: integer, format: int64}
+        branchId: {type: integer, format: int64}
+        product: {type: string}
+        category: {type: string}
+        branch: {type: string}
+        stock: {type: integer, format: int32, minimum: 0}
+        minimumStock: {type: integer, format: int32, minimum: 0}
+        status: {$ref: '#/components/schemas/InventoryStatus'}
+    MovementType:
+      type: string
+      enum: [ENTRADA, SALIDA, REPOSICIÓN]
+    MovementRequest:
+      type: object
+      additionalProperties: false
+      required: [productId, branchId, type, quantity, reference]
+      properties:
+        productId: {type: integer, format: int64, minimum: 1, example: 1}
+        branchId: {type: integer, format: int64, minimum: 1, example: 1}
+        type: {$ref: '#/components/schemas/MovementType'}
+        quantity: {type: integer, minimum: 1, maximum: 1000000, example: 10}
+        reference: {type: string, minLength: 1, maxLength: 120, example: GUIA-001}
+        observation: {type: string, maxLength: 1000, default: ''}
+    Movement:
+      type: object
+      properties:
+        id: {type: integer, format: int64}
+        code: {type: string, example: MOV-1}
+        date: {type: string, format: date-time}
+        productId: {type: integer, format: int64}
+        product: {type: string}
+        branchId: {type: integer, format: int64}
+        branch: {type: string}
+        type: {$ref: '#/components/schemas/MovementType'}
+        quantity: {type: integer, format: int32, description: Negativa para las salidas}
+        reference: {type: string}
+        responsible: {type: string, format: email}
+        observation: {type: string}
+    OrderStatus:
+      type: string
+      enum: [Pendiente, En preparación, Listo para retiro, Completado, Cancelado]
+    OrderItemRequest:
+      type: object
+      additionalProperties: false
+      required: [productId, quantity]
+      properties:
+        productId: {type: integer, format: int64, minimum: 1, example: 1}
+        quantity: {type: integer, minimum: 1, maximum: 10000, example: 2}
+        size: {type: integer, minimum: 1, maximum: 60, nullable: true, example: 40}
+    OrderRequest:
+      type: object
+      additionalProperties: false
+      required: [customer, customerDocument, branchId, items]
+      properties:
+        customer: {type: string, minLength: 1, maxLength: 160, example: Ana Torres}
+        customerDocument: {type: string, minLength: 1, maxLength: 30, example: '12345678'}
+        branchId: {type: integer, format: int64, minimum: 1, example: 1}
+        observations: {type: string, maxLength: 1000, default: ''}
+        items:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: {$ref: '#/components/schemas/OrderItemRequest'}
+    OrderItem:
+      type: object
+      properties:
+        productId: {type: integer, format: int64}
+        product: {type: string, description: Nombre conservado al comprar}
+        price: {type: number, description: Precio conservado al comprar}
+        quantity: {type: integer}
+        subtotal: {type: number}
+        size: {type: integer, nullable: true}
+    Order:
+      type: object
+      properties:
+        id: {type: integer, format: int64}
+        number: {type: string, example: PED-1}
+        date: {type: string, format: date-time}
+        customer: {type: string}
+        customerDocument: {type: string}
+        branchId: {type: integer, format: int64}
+        branch: {type: string}
+        status: {$ref: '#/components/schemas/OrderStatus'}
+        total: {type: number}
+        observations: {type: string}
+        items: {type: array, items: {$ref: '#/components/schemas/OrderItem'}}
+    DashboardMetric:
+      type: object
+      properties:
+        label: {type: string}
+        value: {type: string}
+        icon: {type: string}
+    BranchSummary:
+      type: object
+      properties:
+        branch: {type: string}
+        percentage: {type: integer, minimum: 0, maximum: 100}
+    RecentActivity:
+      type: object
+      properties:
+        title: {type: string}
+        detail: {type: string}
+    SecurityError:
+      type: object
+      required: [status, detail]
+      properties:
+        status: {type: integer}
+        detail: {type: string}
+    Problem:
+      type: object
+      required: [status, detail]
+      properties:
+        type: {type: string, example: 'about:blank'}
+        title: {type: string}
+        status: {type: integer}
+        detail: {type: string}
+        instance: {type: string}
+        fields:
+          type: object
+          description: Mensajes de validación por campo
+          additionalProperties: {type: string}

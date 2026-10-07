@@ -5,53 +5,70 @@ import { BranchService } from '../../../core/services/branch.service';
 @Component({
   selector: 'app-branches-admin',
   imports: [ReactiveFormsModule],
-  template: `<div class="page-head">
+  template: `<div
+      class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4"
+    >
       <div>
-        <p class="eyebrow">ADMINISTRACIÓN</p>
-        <h1>Gestión de sucursales</h1>
-        <p>Configura los puntos de venta y retiro.</p>
+        <p class="text-primary small fw-bold mb-1">ADMINISTRACIÓN</p>
+        <h1 class="h3">Gestión de sucursales</h1>
+        <p class="text-body-secondary mb-0">Configura los puntos de venta y retiro.</p>
       </div>
-      <button class="btn primary" (click)="open()">+ Agregar sucursal</button>
+      <button class="btn btn-primary" (click)="open()">+ Agregar sucursal</button>
     </div>
     @if (showForm()) {
-      <form class="card form-card" [formGroup]="form" (ngSubmit)="save()">
-        <div class="card-head">
-          <h2>Sucursal</h2>
-          <button type="button" class="link-btn" (click)="showForm.set(false)">Cerrar</button>
+      <form class="card shadow-sm p-4 mb-4" [formGroup]="form" (ngSubmit)="save()">
+        <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
+          <h2 class="h5 mb-0">Sucursal</h2>
+          <button
+            type="button"
+            class="btn btn-outline-secondary btn-sm"
+            (click)="showForm.set(false)"
+          >
+            Cerrar
+          </button>
         </div>
-        <div class="form-grid">
-          <label>Nombre<input formControlName="name" /></label
-          ><label>Dirección<input formControlName="address" /></label
-          ><label>Ubicación<input formControlName="location" /></label
-          ><label
-            >Estado<select formControlName="active">
+        <div class="row g-3">
+          <label class="col-12 col-md-6 form-label"
+            >Nombre<input class="form-control" formControlName="name" /></label
+          ><label class="col-12 col-md-6 form-label"
+            >Dirección<input class="form-control" formControlName="address" /></label
+          ><label class="col-12 col-md-6 form-label"
+            >Ubicación<input class="form-control" formControlName="location" /></label
+          ><label class="col-12 col-md-6 form-label"
+            >Estado<select class="form-select" formControlName="active">
               <option [ngValue]="true">Activa</option>
               <option [ngValue]="false">Inactiva</option>
             </select></label
           >
         </div>
         @if (form.touched && form.invalid) {
-          <small class="error">Todos los campos son obligatorios.</small>
+          <small class="invalid-feedback d-block">Todos los campos son obligatorios.</small>
         }
-        <div class="form-actions"><button class="btn primary">Guardar sucursal</button></div>
+        <div class="d-flex justify-content-end mt-3">
+          <button class="btn btn-primary">Guardar sucursal</button>
+        </div>
       </form>
     }
-    <div class="branch-grid">
+    <div class="row g-4">
       @for (b of branches(); track b.id) {
-        <article class="card branch-card">
-          <span class="admin-icon green">⌂</span>
-          <div>
-            <h2>{{ b.name }}</h2>
-            <p>{{ b.address }}</p>
-            <small>{{ b.location }}</small>
+        <div class="col-12 col-md-6">
+          <article class="card shadow-sm p-4 h-100 flex-row gap-3">
+            <i class="bi bi-shop text-success fs-3" aria-hidden="true"></i>
             <div>
-              <span class="badge" [class.success]="b.active">{{
-                b.active ? 'Activa' : 'Inactiva'
-              }}</span
-              ><button class="action" (click)="edit(b)">Editar</button>
+              <h2 class="h5">{{ b.name }}</h2>
+              <p>{{ b.address }}</p>
+              <small>{{ b.location }}</small>
+              <div>
+                <span
+                  class="badge"
+                  [class.text-bg-success]="b.active"
+                  [class.text-bg-secondary]="!b.active"
+                  >{{ b.active ? 'Activa' : 'Inactiva' }}</span
+                ><button class="btn btn-link btn-sm" (click)="edit(b)">Editar</button>
+              </div>
             </div>
-          </div>
-        </article>
+          </article>
+        </div>
       }
     </div>`,
 })

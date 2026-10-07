@@ -12,7 +12,7 @@ import pe.edu.upn.service.InventoryService;
 import java.math.BigDecimal;
 
 @Component
-@Profile("dev")
+@Profile({"dev", "demo"})
 public class DemoDataLoader implements CommandLineRunner {
     private final UserRepository users;
     private final CategoryRepository categories;

@@ -1,0 +1,76 @@
+name: Verify and deploy to Render
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: render-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - name: Verify backend
+        run: mvn -B -ntp clean verify
+      - name: Verify Docker build
+        run: docker build -t shopchain-demo .
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web_frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+          cache: npm
+          cache-dependency-path: web_frontend/package-lock.json
+      - run: npm ci
+      - name: Test frontend
+        run: npm test -- --watch=false --browsers=ChromeHeadless
+      - name: Verify Render build
+        # URL ficticia solo para verificar la compilación. Render usa su propio API_URL.
+        env:
+          API_URL: https://backend.example.com/shopchain/api
+        run: npm run build:render
+
+  deploy:
+    needs: [backend, frontend]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Request deployment of the verified commit
+        env:
+          BACKEND_HOOK: ${{ secrets.RENDER_BACKEND_DEPLOY_HOOK_URL }}
+          FRONTEND_HOOK: ${{ secrets.RENDER_FRONTEND_DEPLOY_HOOK_URL }}
+        shell: bash
+        run: |
+          if [[ -z "$BACKEND_HOOK" || -z "$FRONTEND_HOOK" ]]; then
+            echo "::error::Configura los dos Deploy Hooks en Settings > Secrets and variables > Actions. Consulta documentation/DEPLOYMENT.md."
+            exit 1
+          fi
+          for hook in "$BACKEND_HOOK" "$FRONTEND_HOOK"; do
+            curl --fail --silent --show-error --max-time 60 --output /dev/null \
+              --request POST "${hook}&ref=${GITHUB_SHA}"
+          done
+          echo "### Despliegues solicitados a Render" >> "$GITHUB_STEP_SUMMARY"
+          echo "Commit: \`$GITHUB_SHA\`. Consulta Events de ambos servicios en Render para confirmar que finalizan en Live." >> "$GITHUB_STEP_SUMMARY"

@@ -6,3 +6,7 @@ spring:
   jpa:
     hibernate:
       ddl-auto: create-drop
+
+shopchain:
+  jwt:
+    secret: shopchain-test-key-only-for-automated-tests-2026

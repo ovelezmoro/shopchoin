@@ -2,33 +2,75 @@
 
 Base: `http://localhost:8080/shopchain/api`.
 
+## OpenAPI y Swagger UI
+
+- Interfaz Swagger: `GET /api/docs` → http://localhost:8080/shopchain/api/docs.
+- Especificación: `GET /api/openapi.yml` → http://localhost:8080/shopchain/api/openapi.yml.
+- Fuente del contrato: `src/main/resources/openapi.yml`. Actualizarlo cuando cambien las rutas o los DTO.
+
+Ambos endpoints son públicos. Swagger se sirve desde el backend, incluidos sus
+archivos JavaScript y CSS. Las URLs se resuelven respecto a la instancia actual.
+
+En **Autenticación → POST /auth/login → Try it out**, introducir el correo en
+`identifier` y la contraseña en el cuerpo JSON, y pulsar **Execute**. Copiar
+`accessToken` de la respuesta y pegarlo en **Authorize**, sin el prefijo `Bearer`.
+Swagger enviará la cabecera `Authorization` en las operaciones protegidas.
+Después del login, probar `GET /auth/me` y las operaciones de negocio. Para dejar
+de enviar el token, pulsar **Logout** dentro de **Authorize**.
+
 ## Autenticación
 
-1. `GET /auth/csrf`: devuelve `headerName` y `token`, y crea la sesión.
-2. `POST /auth/login`: enviar formulario `application/x-www-form-urlencoded` con `identifier` y `password`, la cookie de sesión y la cabecera `X-CSRF-TOKEN`.
-3. Solicitar nuevamente `GET /auth/csrf` después del login: Spring renueva el token al autenticar.
-4. Conservar la cookie `JSESSIONID` en todas las llamadas. Enviar el token en las escrituras.
-5. `GET /auth/me`: usuario de la sesión actual.
-6. `POST /auth/logout`: requiere CSRF; invalida la sesión y devuelve `204`.
+1. `POST /auth/login`: enviar `application/json` con `identifier` (correo) y `password`.
+2. La respuesta incluye `accessToken`, `tokenType: "Bearer"`, `expiresIn` (segundos) y `user`, nunca su contraseña.
+3. Enviar `Authorization: Bearer <accessToken>` en todas las llamadas protegidas, tanto lecturas como escrituras.
+4. `GET /auth/me`: devuelve los datos actuales del usuario identificado por el token.
+5. Cerrar sesión consiste en eliminar el token del cliente. No hay endpoints `/auth/csrf` ni `/auth/logout`.
 
-El login devuelve el usuario, nunca su contraseña. Una sesión expira después de 30 minutos de inactividad. Como se utiliza la sesión estándar de Spring Security, los cambios de rol, correo, contraseña o estado de un usuario se aplican a su autenticación al volver a iniciar sesión.
+Ejemplo de solicitud:
+
+```json
+{ "identifier": "admin@shopchain.pe", "password": "admin123" }
+```
+
+Ejemplo de respuesta (token abreviado):
+
+```json
+{
+  "accessToken": "eyJ...",
+  "tokenType": "Bearer",
+  "expiresIn": 1800,
+  "user": {
+    "id": 1,
+    "names": "Administrador",
+    "email": "admin@shopchain.pe",
+    "role": "ADMINISTRADOR",
+    "active": true
+  }
+}
+```
+
+La API no usa sesiones HTTP ni cookies de autenticación. Los JWT se firman con HS256
+y vencen a los 30 minutos de su emisión por defecto (`JWT_EXPIRATION_MINUTES`). No hay
+renovación automática ni refresh tokens. Ante `401`, iniciar sesión nuevamente.
+La clave se configura con `JWT_SECRET` (mínimo 32 bytes UTF-8); solo el perfil `dev`
+incluye una clave de demostración. Fuera de desarrollo se debe proporcionar una clave
+secreta aleatoria mediante esa variable de entorno.
+
+Esta implementación sencilla no revoca tokens: borrar el token en el cliente no
+invalida otras copias. Los permisos del JWT se mantienen hasta que venza, incluso
+si se cambia el rol, correo, contraseña o estado del usuario. Un nuevo login usa los
+datos actualizados; un usuario inactivo no puede obtener nuevos tokens.
 
 ### Ejemplo en PowerShell
 
 ```powershell
 $base = 'http://localhost:8080/shopchain/api'
-$session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
-$csrf = Invoke-RestMethod "$base/auth/csrf" -WebSession $session
-$headers = @{ 'X-CSRF-TOKEN' = $csrf.token }
-
-Invoke-RestMethod "$base/auth/login" -Method Post -WebSession $session -Headers $headers `
-  -ContentType 'application/x-www-form-urlencoded' `
-  -Body @{ identifier = 'admin@shopchain.pe'; password = 'admin123' }
-
-$csrf = Invoke-RestMethod "$base/auth/csrf" -WebSession $session
-$headers = @{ 'X-CSRF-TOKEN' = $csrf.token }
-$products = Invoke-RestMethod "$base/products" -WebSession $session
-$branches = Invoke-RestMethod "$base/branches" -WebSession $session
+$credentials = @{ identifier = 'admin@shopchain.pe'; password = 'admin123' } | ConvertTo-Json
+$login = Invoke-RestMethod "$base/auth/login" -Method Post `
+  -ContentType 'application/json' -Body $credentials
+$headers = @{ Authorization = "Bearer $($login.accessToken)" }
+$products = Invoke-RestMethod "$base/products" -Headers $headers
+$branches = Invoke-RestMethod "$base/branches" -Headers $headers
 
 $body = @{
   customer = 'Ana Torres'
@@ -38,16 +80,18 @@ $body = @{
   items = @(@{ productId = $products[0].id; quantity = 1; size = 40 })
 } | ConvertTo-Json -Depth 4
 
-$order = Invoke-RestMethod "$base/orders" -Method Post -WebSession $session -Headers $headers `
+$order = Invoke-RestMethod "$base/orders" -Method Post -Headers $headers `
   -ContentType 'application/json; charset=utf-8' -Body $body
 $order
 
-Invoke-RestMethod "$base/auth/logout" -Method Post -WebSession $session -Headers $headers
+# Cierre local: dejar de conservar y enviar el token.
+$login = $null
+$headers = $null
 ```
 
 ## Rutas
 
-Todas las rutas de negocio requieren sesión. Los listados devuelven arrays JSON.
+Todas las rutas de negocio requieren un JWT válido. Los listados devuelven arrays JSON.
 
 | Método | Ruta | Función |
 |---|---|---|
@@ -189,10 +233,9 @@ Secuencia: `Pendiente → En preparación → Listo para retiro → Completado`.
 
 - `200`: consulta o actualización correcta.
 - `201`: recurso creado.
-- `204`: logout correcto.
 - `400`: validación, formato o valor de parámetro inválido.
-- `401`: sesión ausente, credenciales incorrectas o usuario inactivo al autenticar.
-- `403`: rol sin permiso o CSRF inválido.
+- `401`: JWT ausente, inválido o vencido; credenciales incorrectas o usuario inactivo al autenticar.
+- `403`: rol sin permiso para la operación.
 - `404`: recurso inexistente.
 - `409`: datos duplicados o regla de negocio incumplida, por ejemplo stock insuficiente.
 
@@ -200,9 +243,11 @@ Los errores contienen `status` y `detail`. Los errores de validación también i
 
 ## Contrato de integración Angular
 
-- Mantener la URL base existente y usar `withCredentials: true`.
-- Obtener `/auth/csrf` y enviar la cabecera indicada en cada escritura, también en login y logout.
-- El login devuelve un usuario; el servicio Angular podrá transformarlo a su resultado actual `boolean`.
+- Mantener la URL base existente; no se necesita `withCredentials`.
+- Guardar `accessToken` en `sessionStorage` y añadir `Authorization: Bearer <token>` mediante el interceptor, únicamente para la API.
+- El login devuelve el token y el usuario; `AuthService.login()` conserva su resultado `boolean` para la pantalla.
+- Restaurar el usuario con `/auth/me` solo cuando exista un token guardado. Un `401` limpia el token y solicita iniciar sesión.
+- Logout es local: eliminar el token y el usuario actual. `sessionStorage` sobrevive a recargas, queda limitado a la pestaña y es accesible desde JavaScript.
 - Las relaciones en solicitudes usan `categoryId`, `productId` y `branchId`. Las respuestas incluyen los nombres para mostrar en pantalla.
 - Las fechas se devuelven en ISO-8601 UTC, para formatearlas en Angular.
 - Los estados y roles conservan los textos en español definidos en los modelos de Angular.

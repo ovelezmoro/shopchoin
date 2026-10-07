@@ -6,6 +6,7 @@ import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angu
 import { ProductService } from '../../../core/services/product.service';
 import { BranchService } from '../../../core/services/branch.service';
 import { InventoryService } from '../../../core/services/inventory.service';
+import { StatusBadgePipe } from '../../../shared/pipes/status-badge.pipe';
 import {
   Branch,
   Product,
@@ -14,77 +15,115 @@ import {
 } from '../../../core/models/shopchain.models';
 @Component({
   selector: 'app-movements',
-  imports: [ReactiveFormsModule, FormsModule, DatePipe],
-  template: `<div class="page-head mock-head">
+  imports: [ReactiveFormsModule, FormsModule, DatePipe, StatusBadgePipe],
+  template: `<div
+      class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4"
+    >
       <div>
-        <div class="section-title">Movimientos de stock</div>
-        <div class="section-subtitle">Registro de entradas, salidas y reposiciones.</div>
+        <h1 class="h3">Movimientos de stock</h1>
+        <p class="text-body-secondary mb-0">Registro de entradas, salidas y reposiciones.</p>
       </div>
-      @if (auth.hasRole(roles.Admin, roles.Warehouse)) { <button class="btn primary" (click)="showForm.set(!showForm())">+ Nuevo movimiento</button> }
+      @if (auth.hasRole(roles.Admin, roles.Warehouse)) {
+        <button class="btn btn-primary" (click)="showForm.set(!showForm())">
+          + Nuevo movimiento
+        </button>
+      }
     </div>
     @if (showForm()) {
-      <form class="card form-card" [formGroup]="form" (ngSubmit)="save()">
-        <div class="card-head">
-          <h2>Registrar movimiento</h2>
-          <button type="button" class="link-btn" (click)="showForm.set(false)">Cerrar</button>
+      <form class="card shadow-sm p-4 mb-4" [formGroup]="form" (ngSubmit)="save()">
+        <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
+          <h2 class="h5 mb-0">Registrar movimiento</h2>
+          <button
+            type="button"
+            class="btn btn-outline-secondary btn-sm"
+            (click)="showForm.set(false)"
+          >
+            Cerrar
+          </button>
         </div>
-        <div class="form-grid">
-          <label
-            >Producto<select formControlName="product">
+        <div class="row g-3">
+          <label class="col-12 col-md-6 form-label"
+            >Producto<select class="form-select" formControlName="product">
               <option value="">Selecciona</option>
               @for (p of products(); track p.id) {
-                @if (p.active) { <option [value]="p.id">{{ p.name }}</option> }
+                @if (p.active) {
+                  <option [value]="p.id">{{ p.name }}</option>
+                }
               }
             </select></label
-          ><label
-            >Tipo<select formControlName="type">
+          ><label class="col-12 col-md-6 form-label"
+            >Tipo<select class="form-select" formControlName="type">
               <option value="">Selecciona</option>
               <option value="ENTRADA">ENTRADA</option>
               <option value="SALIDA">SALIDA</option>
               <option value="REPOSICIÓN">REPOSICIÓN</option>
             </select></label
-          ><label>Cantidad<input type="number" min="1" formControlName="quantity" /></label
-          ><label
-            >Sucursal<select formControlName="branch">
+          ><label class="col-12 col-md-6 form-label"
+            >Cantidad<input
+              class="form-control"
+              type="number"
+              min="1"
+              formControlName="quantity" /></label
+          ><label class="col-12 col-md-6 form-label"
+            >Sucursal<select class="form-select" formControlName="branch">
               <option value="">Selecciona</option>
               @for (b of branches(); track b.id) {
-                @if (b.active) { <option [value]="b.id">{{ b.name }}</option> }
+                @if (b.active) {
+                  <option [value]="b.id">{{ b.name }}</option>
+                }
               }
             </select></label
-          ><label
-            >Referencia<input formControlName="reference" placeholder="PED-0000 o REP-000" /></label
-          ><label>Observación<input formControlName="observation" /></label>
+          ><label class="col-12 col-md-6 form-label"
+            >Referencia<input
+              class="form-control"
+              formControlName="reference"
+              placeholder="PED-0000 o REP-000" /></label
+          ><label class="col-12 col-md-6 form-label"
+            >Observación<input class="form-control" formControlName="observation"
+          /></label>
         </div>
         @if (form.touched && form.invalid) {
-          <small class="error">Completa todos los campos requeridos.</small>
+          <small class="invalid-feedback d-block">Completa todos los campos requeridos.</small>
         }
-        <div class="form-actions">
-          <button type="button" class="btn secondary" (click)="showForm.set(false)">Cancelar</button
-          ><button class="btn primary">Guardar movimiento</button>
+        <div class="d-flex flex-wrap justify-content-end gap-2 mt-3">
+          <button type="button" class="btn btn-outline-secondary" (click)="showForm.set(false)">
+            Cancelar</button
+          ><button class="btn btn-primary">Guardar movimiento</button>
         </div>
       </form>
     }
-    <div class="card filter-card">
-      <div class="filters four">
-        <select [(ngModel)]="typeFilter">
-          <option value="">Todos los tipos</option>
-          <option>ENTRADA</option>
-          <option>SALIDA</option>
-          <option>REPOSICIÓN</option></select
-        ><select [(ngModel)]="branchFilter">
-          <option value="">Todas las sucursales</option>
-          @for (b of branches(); track b.id) {
-            <option [value]="b.name">{{ b.name }}</option>
-          }</select
-        ><label class="search"
-          ><input [(ngModel)]="query" placeholder="Buscar producto o referencia" /></label
-        ><button class="btn secondary">Filtrar</button>
+    <div class="card shadow-sm p-3 mb-4">
+      <div class="row g-3">
+        <div class="col-12 col-sm-6 col-lg-3">
+          <select class="form-select" aria-label="Tipo de movimiento" [(ngModel)]="typeFilter">
+            <option value="">Todos los tipos</option>
+            <option>ENTRADA</option>
+            <option>SALIDA</option>
+            <option>REPOSICIÓN</option>
+          </select>
+        </div>
+        <div class="col-12 col-sm-6 col-lg-3">
+          <select class="form-select" aria-label="Sucursal" [(ngModel)]="branchFilter">
+            <option value="">Todas las sucursales</option>
+            @for (b of branches(); track b.id) {
+              <option [value]="b.name">{{ b.name }}</option>
+            }
+          </select>
+        </div>
+        <div class="col-12 col-lg-6">
+          <input
+            class="form-control"
+            aria-label="Buscar producto o referencia"
+            [(ngModel)]="query"
+            placeholder="Buscar producto o referencia"
+          />
+        </div>
       </div>
     </div>
-    <article class="card">
-      <div class="table-wrap">
-        <table>
-          <thead>
+    <article class="card shadow-sm p-4">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle">
+          <thead class="table-light">
             <tr>
               <th>Fecha</th>
               <th>Producto</th>
@@ -101,9 +140,9 @@ import {
                 <td>{{ m.date | date: 'dd/MM/yyyy HH:mm' }}</td>
                 <td>{{ m.product }}</td>
                 <td>
-                  <span class="badge movement" [attr.data-type]="m.type">{{ m.type }}</span>
+                  <span class="badge" [class]="m.type | statusBadge">{{ m.type }}</span>
                 </td>
-                <td [class.negative]="m.quantity < 0">
+                <td [class.text-danger]="m.quantity < 0">
                   {{ m.quantity > 0 ? '+' : '' }}{{ m.quantity }}
                 </td>
                 <td>{{ m.branch }}</td>

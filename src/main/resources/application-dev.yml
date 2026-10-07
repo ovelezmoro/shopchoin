@@ -4,5 +4,7 @@ spring:
       ddl-auto: update
 
 shopchain:
+  jwt:
+    secret: ${JWT_SECRET:shopchain-demo-key-only-for-local-development-2026}
   demo:
     password: ${DEMO_ADMIN_PASSWORD:admin123}
