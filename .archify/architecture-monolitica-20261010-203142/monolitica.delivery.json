@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "361e6701-dbb7-4fbd-a68c-fcf054cef336",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "C:\\opt\\ovelezmoro\\UPN\\shopchain\\.archify\\architecture-monolitica-20261010-203142\\candidate.json",
+  "output": "C:\\opt\\ovelezmoro\\UPN\\shopchain\\.archify\\architecture-monolitica-20261010-203142\\monolitica.html",
+  "specification": {
+    "sha256": "4f719deacf405b28ea92451aaf0e47fe898fb774316c432cb5bd640ccabf0d58",
+    "bytes": 32902
+  },
+  "artifact": {
+    "sha256": "b0e2abd80661be7519a244635cbb69139632667605570b88e8df38b9d2943ff3",
+    "bytes": 755420
+  }
+}

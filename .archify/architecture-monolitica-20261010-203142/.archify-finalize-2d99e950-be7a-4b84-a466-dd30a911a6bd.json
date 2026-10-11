@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "finalize",
+  "status": "running",
+  "type": "architecture",
+  "quality": "showcase",
+  "startedAt": "2026-10-11T01:31:59.758Z",
+  "specification": {
+    "path": "C:\\opt\\ovelezmoro\\UPN\\shopchain\\.archify\\architecture-monolitica-20261010-203142\\candidate.json",
+    "sha256": "4f719deacf405b28ea92451aaf0e47fe898fb774316c432cb5bd640ccabf0d58",
+    "bytes": 32902
+  },
+  "artifact": {
+    "path": "C:\\opt\\ovelezmoro\\UPN\\shopchain\\.archify\\architecture-monolitica-20261010-203142\\monolitica.html"
+  },
+  "stages": {},
+  "diagnostics": [],
+  "evidence": {
+    "receipt": "C:\\opt\\ovelezmoro\\UPN\\shopchain\\.archify\\architecture-monolitica-20261010-203142\\monolitica.finalize.json",
+    "summaryReceipt": "C:\\opt\\ovelezmoro\\UPN\\shopchain\\.archify\\architecture-monolitica-20261010-203142\\monolitica.finalize-summary.json"
+  },
+  "visualReview": "not-requested"
+}
